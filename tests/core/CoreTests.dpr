@@ -18,9 +18,17 @@ program CoreTests;
 {$ENDIF}
 
 uses
-  TreatmentForm.Testing,
-  TreatmentForm.Tests.Validation,
-  TreatmentForm.Tests.Formatting;
+  { Every project unit is listed with its path, including the ones only reached
+    indirectly, so the project builds from a clone with nothing to configure.
+    Forward slashes on purpose: Delphi accepts them on Windows and Free Pascal
+    needs them on Linux. }
+  TreatmentForm.Types in '../../src/core/TreatmentForm.Types.pas',
+  TreatmentForm.Text in '../../src/core/TreatmentForm.Text.pas',
+  TreatmentForm.Validation in '../../src/core/TreatmentForm.Validation.pas',
+  TreatmentForm.Formatting in '../../src/core/TreatmentForm.Formatting.pas',
+  TreatmentForm.Testing in '../../src/core/TreatmentForm.Testing.pas',
+  TreatmentForm.Tests.Validation in 'TreatmentForm.Tests.Validation.pas',
+  TreatmentForm.Tests.Formatting in 'TreatmentForm.Tests.Formatting.pas';
 
 var
   Runner: TTestRunner;

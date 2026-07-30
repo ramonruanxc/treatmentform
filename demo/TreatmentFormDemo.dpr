@@ -2,6 +2,16 @@ program TreatmentFormDemo;
 
 uses
   Vcl.Forms,
+  { Every project unit is listed with its path so the demo builds from a clone
+    without setting a search path. Forward slashes on purpose: Delphi accepts
+    them on Windows. }
+  TreatmentForm.Types in '../src/core/TreatmentForm.Types.pas',
+  TreatmentForm.Text in '../src/core/TreatmentForm.Text.pas',
+  TreatmentForm.Validation in '../src/core/TreatmentForm.Validation.pas',
+  TreatmentForm.Formatting in '../src/core/TreatmentForm.Formatting.pas',
+  TreatmentForm.Vcl.Treatments in '../src/vcl/TreatmentForm.Vcl.Treatments.pas',
+  TreatmentForm.Vcl.FormTreatment in '../src/vcl/TreatmentForm.Vcl.FormTreatment.pas',
+  TreatmentForm.Vcl.Controls in '../src/vcl/TreatmentForm.Vcl.Controls.pas',
   DemoForm in 'DemoForm.pas' {frmDemo};
 
 { The project .res carries the application MANIFEST, not just version info and
