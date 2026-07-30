@@ -1,0 +1,37 @@
+# Build output
+build/
+bin/
+lib/
+*.exe
+*.dcu
+*.ppu
+*.o
+*.a
+*.or
+*.compiled
+*.identcache
+*.local
+*.dsk
+*.tvsconfig
+*.stat
+*.rsm
+*.drc
+*.map
+*.tds
+
+# Delphi project user files
+*.dproj.local
+*.groupproj.local
+__history/
+__recovery/
+Win32/
+Win64/
+
+# Boss
+modules/
+boss-lock.json
+
+# Editors
+.vscode/
+.idea/
+*~

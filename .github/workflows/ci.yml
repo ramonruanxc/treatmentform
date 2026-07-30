@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  core:
+    name: Core suite (Free Pascal, Linux)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Free Pascal
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fpc
+          fpc -iV
+
+      # The core has no VCL dependency, which is what makes this job possible:
+      # Delphi cannot be licensed on a hosted runner, and the Community Edition
+      # refuses command line compilation even locally.
+      - name: Build core test suite
+        run: |
+          mkdir -p build
+          fpc -Mdelphi \
+            -Fusrc/core -Futests/core \
+            -FUbuild -obuild/CoreTests \
+            tests/core/CoreTests.dpr
+
+      - name: Run core test suite
+        run: ./build/CoreTests

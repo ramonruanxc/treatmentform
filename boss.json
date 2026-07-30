@@ -1,0 +1,9 @@
+{
+  "name": "github.com/ramonruanxc/treatmentform",
+  "description": "Validation and form treatment for Delphi, with a UI-free portable core.",
+  "version": "2.0.0",
+  "homepage": "https://github.com/ramonruanxc/treatmentform",
+  "mainsrc": "src",
+  "license": "MIT",
+  "dependencies": {}
+}
