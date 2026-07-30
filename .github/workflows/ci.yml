@@ -33,3 +33,48 @@ jobs:
 
       - name: Run core test suite
         run: ./build/CoreTests
+
+  # The VCL layer cannot be compiled here — Delphi is not licensable on a hosted
+  # runner and its Community Edition refuses command-line builds even locally —
+  # so this job checks the one class of VCL breakage that IS checkable from the
+  # repository alone: a unit that requires a form resource whose .dfm was never
+  # committed. That exact mistake shipped once; a fresh clone could not build the
+  # demo while CI stayed green, because CI only ever touched the core.
+  manifest:
+    name: Repository manifest (committed files match what the source requires)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Every unit with {$R *.dfm} has its .dfm committed
+        run: |
+          status=0
+          while IFS= read -r unit; do
+            dfm="${unit%.pas}.dfm"
+            if [ ! -f "$dfm" ]; then
+              echo "::error file=$unit::declares {\$R *.dfm} but $dfm is not in the repository"
+              status=1
+            else
+              echo "ok  $unit -> $dfm"
+            fi
+          done < <(grep -rl --include='*.pas' -F '{$R *.dfm}' . || true)
+          exit $status
+
+      - name: Every unit named in a .dpr uses clause exists
+        run: |
+          status=0
+          for dpr in $(find . -name '*.dpr'); do
+            dir=$(dirname "$dpr")
+            # Pull the 'Unit in '...'' file names out of the uses clause.
+            while IFS= read -r rel; do
+              [ -z "$rel" ] && continue
+              if [ ! -f "$dir/$rel" ]; then
+                echo "::error file=$dpr::references '$rel', which is not in the repository"
+                status=1
+              else
+                echo "ok  $dpr -> $rel"
+              fi
+            done < <(sed -n "s/.*[Ii][Nn] '\([^']*\)'.*/\1/p" "$dpr")
+          done
+          exit $status

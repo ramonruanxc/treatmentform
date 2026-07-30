@@ -178,24 +178,47 @@ begin
   Result := Self;
 end;
 
+type
+  { TControl.Text is protected, so a TWinControl reference cannot read it; a
+    local descendant exposes the inherited member. Text lives on TControl, so
+    this reaches every control uniformly — the standard VCL "cracker" idiom. }
+  TControlTextAccess = class(TControl);
+
 function TFormTreatment.ControlValue(AControl: TWinControl): string;
 begin
-  if AControl is TCustomEdit then
-    Result := TCustomEdit(AControl).Text
-  else if AControl is TCustomComboBox then
-    Result := TCustomComboBox(AControl).Text
-  else if AControl is TDateTimePicker then
-    Result := DateToStr(TDateTimePicker(AControl).Date)
+  if AControl is TDateTimePicker then
+    { Pinned format, not DateToStr. DateToStr uses the ambient
+      ShortDateFormat, while TDateValidator is a fixed day/month/year parser —
+      so on an m/d/yyyy machine a valid date came back as '7/25/2026' and was
+      rejected with "Month 25 is out of range", and on d <= 12 the day and
+      month silently swapped. The two halves of the library have to agree on
+      one order, and this is where that is decided. }
+    Result := FormatDateTime('dd/mm/yyyy', TDateTimePicker(AControl).Date)
   else
-    Result := '';
+    Result := TControlTextAccess(AControl).Text;
 end;
 
-{ A disabled or hidden control is not something the user can act on, so
+{ TControl.Visible reports the control's OWN flag, which stays True for an edit
+  sitting on a hidden panel or an inactive tab sheet. Effective visibility needs
+  the whole parent chain, otherwise a form refuses to submit and paints the
+  reason on a page the user cannot see. }
+function EffectivelyVisible(AControl: TControl): Boolean;
+var
+  Current: TControl;
+begin
+  Current := AControl;
+  while (Current <> nil) and Current.Visible do
+    Current := Current.Parent;
+  Result := Current = nil;
+end;
+
+{ A disabled or unreachable control is not something the user can act on, so
   failing it would produce a form that cannot be submitted and gives no way to
-  find out why. The original made the same choice. }
+  find out why. The original made the same choice, but tested only the control's
+  own Visible flag. }
 function TFormTreatment.ShouldSkip(AControl: TWinControl): Boolean;
 begin
-  Result := (not AControl.Enabled) or (not AControl.Visible);
+  Result := (not AControl.Enabled) or (not EffectivelyVisible(AControl));
 end;
 
 procedure TFormTreatment.ClearAll;
@@ -253,16 +276,19 @@ var
 begin
   Ordered := TList<TWinControl>.Create;
   try
+    { Every windowed child goes in, containers included, and TabStop is NOT a
+      filter here. TabOrder is an index into the parent's list of ALL windowed
+      children, and that list is flattened depth-first — so a container's slot
+      decides when its children are reached. Renumbering from a TabStop-only
+      subset pushed panels and group boxes to the end and made everything inside
+      them come last, whatever their position on screen. Controls with
+      TabStop=False are skipped at run time by the VCL's own navigation, so
+      including them here costs nothing and keeps containers in visual order. }
     for I := 0 to AParent.ControlCount - 1 do
     begin
       Child := AParent.Controls[I];
-      if not (Child is TWinControl) then
-        Continue;
-      if Child is TLabel then
-        Continue;
-      if not TWinControl(Child).TabStop then
-        Continue;
-      Ordered.Add(TWinControl(Child));
+      if Child is TWinControl then
+        Ordered.Add(TWinControl(Child));
     end;
 
     Ordered.Sort(TComparer<TWinControl>.Construct(

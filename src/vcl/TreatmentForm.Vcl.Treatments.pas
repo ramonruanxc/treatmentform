@@ -1,4 +1,4 @@
-{
+﻿{
   TreatmentForm — VCL layer.
 
   How a validation failure is shown to the user.
@@ -27,6 +27,7 @@ uses
   System.Generics.Collections,
   Vcl.Controls,
   Vcl.Graphics,
+  Vcl.ExtCtrls,
   Vcl.StdCtrls,
   TreatmentForm.Types;
 
@@ -47,12 +48,19 @@ type
     next repaint erased — the highlight disappeared as soon as the user
     scrolled or another window overlapped. Setting the control's own colour
     survives repainting because the control draws it. }
+  { What has to be put back when the highlight is cleared. Restoring the colour
+    alone is not enough: TControl.SetColor also clears ParentColor, so a control
+    that was tracking its parent's colour would stay permanently detached from
+    it after the first failed validation. }
+  TSavedColor = record
+    Color: TColor;
+    ParentColor: Boolean;
+  end;
+
   THighlightTreatment = class(TInterfacedObject, IControlTreatment)
   strict private
     FColor: TColor;
-    FOriginalColors: TDictionary<TWinControl, TColor>;
-    function TryGetColor(AControl: TWinControl; out AColor: TColor): Boolean;
-    function TrySetColor(AControl: TWinControl; AColor: TColor): Boolean;
+    FOriginalColors: TDictionary<TWinControl, TSavedColor>;
   public
     constructor Create(AColor: TColor = $00CFCFFF);
     destructor Destroy; override;
@@ -61,16 +69,27 @@ type
     property Color: TColor read FColor write FColor;
   end;
 
-  { Shows the failure message in a balloon anchored to the control.
+  { Shows the failure message in a balloon anchored to the FIRST offending
+    control of a pass.
 
     Replaces a hand-rolled Win32 tooltip that leaked a window handle on every
     call, under-allocated its text buffer, and truncated pointers on 64-bit.
     TBalloonHint has shipped with the VCL since Delphi 2009 and does the same
-    job without any of that. }
+    job without any of that.
+
+    First failure only, and that is a real constraint rather than a choice: a
+    TCustomHint can display exactly one balloon. Every ShowHint queues a hint
+    window onto the object's single animation thread, which frees all but the
+    last before painting. Showing a balloon per field would therefore display
+    one arbitrary balloon and silently discard the rest, so the treatment claims
+    only what it can deliver — like TFocusTreatment, which is bounded the same
+    way for the same kind of reason. Pair it with THighlightTreatment when
+    StopOnFirstFailure is False and you want every bad field marked. }
   TBalloonTipTreatment = class(TInterfacedObject, IControlTreatment)
   strict private
     FHint: TBalloonHint;
     FTitle: string;
+    FClaimed: Boolean;
   public
     constructor Create(const ATitle: string = 'Check this field');
     destructor Destroy; override;
@@ -100,7 +119,7 @@ constructor THighlightTreatment.Create(AColor: TColor);
 begin
   inherited Create;
   FColor := AColor;
-  FOriginalColors := TDictionary<TWinControl, TColor>.Create;
+  FOriginalColors := TDictionary<TWinControl, TSavedColor>.Create;
 end;
 
 destructor THighlightTreatment.Destroy;
@@ -109,57 +128,39 @@ begin
   inherited Destroy;
 end;
 
-{ Colour is not on TWinControl, so the supported control types are explicit.
-  An unsupported control is skipped rather than raising: a form may legitimately
-  contain controls this treatment cannot tint. }
-function THighlightTreatment.TryGetColor(AControl: TWinControl;
-  out AColor: TColor): Boolean;
-begin
-  Result := True;
-  if AControl is TCustomEdit then
-    AColor := TCustomEdit(AControl).Color
-  else if AControl is TCustomComboBox then
-    AColor := TCustomComboBox(AControl).Color
-  else
-  begin
-    AColor := clWindow;
-    Result := False;
-  end;
-end;
-
-function THighlightTreatment.TrySetColor(AControl: TWinControl;
-  AColor: TColor): Boolean;
-begin
-  Result := True;
-  if AControl is TCustomEdit then
-    TCustomEdit(AControl).Color := AColor
-  else if AControl is TCustomComboBox then
-    TCustomComboBox(AControl).Color := AColor
-  else
-    Result := False;
-end;
+type
+  { Color and ParentColor are declared protected on TControl and only made
+    public or published by concrete classes like TEdit, so a TWinControl
+    reference cannot reach them. A local descendant exposes the inherited
+    protected members, which lets the treatment tint any control uniformly
+    without casting to each concrete published type — the standard VCL
+    "cracker" idiom. }
+  TControlColorAccess = class(TControl);
 
 procedure THighlightTreatment.Apply(AControl: TWinControl;
   const AResult: TValidationResult);
 var
-  Original: TColor;
+  Saved: TSavedColor;
 begin
   if not FOriginalColors.ContainsKey(AControl) then
   begin
-    if not TryGetColor(AControl, Original) then
-      Exit;
-    FOriginalColors.Add(AControl, Original);
+    Saved.Color := TControlColorAccess(AControl).Color;
+    Saved.ParentColor := TControlColorAccess(AControl).ParentColor;
+    FOriginalColors.Add(AControl, Saved);
   end;
-  TrySetColor(AControl, FColor);
+  TControlColorAccess(AControl).Color := FColor;
 end;
 
 procedure THighlightTreatment.Clear(AControl: TWinControl);
 var
-  Original: TColor;
+  Saved: TSavedColor;
 begin
-  if FOriginalColors.TryGetValue(AControl, Original) then
+  if FOriginalColors.TryGetValue(AControl, Saved) then
   begin
-    TrySetColor(AControl, Original);
+    { Order matters: assigning Color clears ParentColor, so ParentColor has to
+      go back last. }
+    TControlColorAccess(AControl).Color := Saved.Color;
+    TControlColorAccess(AControl).ParentColor := Saved.ParentColor;
     FOriginalColors.Remove(AControl);
   end;
 end;
@@ -171,7 +172,6 @@ begin
   inherited Create;
   FTitle := ATitle;
   FHint := TBalloonHint.Create(nil);
-  FHint.ImageKind := bikWarning;
   FHint.HideAfter := 5000;
 end;
 
@@ -184,15 +184,22 @@ end;
 procedure TBalloonTipTreatment.Apply(AControl: TWinControl;
   const AResult: TValidationResult);
 begin
+  if FClaimed then
+    Exit;
+
   FHint.Title := FTitle;
   { The message comes from the validator that rejected the value, so the text
     lives with the rule instead of being duplicated at every call site. }
   FHint.Description := AResult.Message;
   FHint.ShowHint(AControl);
+  FClaimed := True;
 end;
 
 procedure TBalloonTipTreatment.Clear(AControl: TWinControl);
 begin
+  { Clear runs over every control before a pass begins, which is when the claim
+    has to be released. }
+  FClaimed := False;
   FHint.HideHint;
 end;
 

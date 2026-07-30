@@ -1,12 +1,19 @@
 {
   TreatmentForm — demo.
 
-  Built entirely in code, with no .dfm. That is deliberate: the form is
-  documentation, and a reader can follow what it does from this one file
-  instead of cross-referencing a designer file they cannot see on GitHub.
+  An ordinary VCL form with an ordinary .dfm, so it opens in the form designer
+  like any other Delphi project. The controls live in the designer; this unit
+  holds only the wiring, which is the part worth reading:
 
-  Replaces a 1,416 line demo whose length came from repeating the same wiring
-  for every control.
+    - which validator applies to which control (FormCreate)
+    - how failures are signalled (the Treat calls)
+    - formatting while the user types (edCpfChange)
+
+  Note that the form descends from TForm, not from the library's TFadeForm. A
+  form whose ancestor is a custom form class cannot be opened in the designer
+  unless that ancestor is installed in a design-time package, which is friction
+  a demo should not impose. TFadeForm gets its own runtime demonstration
+  instead — see btnFadeFormClick.
 }
 unit DemoForm;
 
@@ -18,26 +25,35 @@ uses
   Vcl.Forms,
   Vcl.StdCtrls,
   Vcl.Graphics,
-  TreatmentForm.Vcl.Controls,
   TreatmentForm.Vcl.FormTreatment;
 
 type
-  TfrmDemo = class(TFadeForm)
+  TfrmDemo = class(TForm)
+    lblName: TLabel;
+    lblCpf: TLabel;
+    lblEmail: TLabel;
+    lblCep: TLabel;
+    lblBirthDate: TLabel;
+    lblStatus: TLabel;
+    edName: TEdit;
+    edCpf: TEdit;
+    edEmail: TEdit;
+    edCep: TEdit;
+    edBirthDate: TEdit;
+    btnValidate: TButton;
+    btnFadeForm: TButton;
+    procedure FormCreate(Sender: TObject);
+    procedure btnValidateClick(Sender: TObject);
+    procedure edCpfChange(Sender: TObject);
+    procedure btnFadeFormClick(Sender: TObject);
   strict private
-    FName: TEdit;
-    FCpf: TEdit;
-    FEmail: TEdit;
-    FCep: TEdit;
-    FBirthDate: TEdit;
-    FStatus: TLabel;
     FTreatment: TFormTreatment;
-    function AddField(const ACaption: string; ATop: Integer): TEdit;
-    procedure SubmitClick(Sender: TObject);
-    procedure FormatCpf(Sender: TObject);
   public
-    constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
   end;
+
+var
+  frmDemo: TfrmDemo;
 
 implementation
 
@@ -46,62 +62,18 @@ uses
   TreatmentForm.Types,
   TreatmentForm.Validation,
   TreatmentForm.Formatting,
+  TreatmentForm.Vcl.Controls,
   TreatmentForm.Vcl.Treatments;
 
-function TfrmDemo.AddField(const ACaption: string; ATop: Integer): TEdit;
-var
-  Lbl: TLabel;
+{$R *.dfm}
+
+procedure TfrmDemo.FormCreate(Sender: TObject);
 begin
-  Lbl := TLabel.Create(Self);
-  Lbl.Parent := Self;
-  Lbl.SetBounds(24, ATop, 100, 17);
-  Lbl.Caption := ACaption;
-
-  Result := TEdit.Create(Self);
-  Result.Parent := Self;
-  Result.SetBounds(140, ATop - 3, 260, 25);
-  Result.Name := 'ed' + StringReplace(ACaption, ' ', '', [rfReplaceAll]);
-end;
-
-constructor TfrmDemo.Create(AOwner: TComponent);
-var
-  Submit: TButton;
-begin
-  inherited Create(AOwner);
-
-  Caption := 'TreatmentForm demo';
-  Position := poScreenCenter;
-  ClientWidth := 440;
-  ClientHeight := 300;
-  BorderStyle := bsSingle;
-  KeyPreview := True;
-
-  FName := AddField('Name', 30);
-  FCpf := AddField('CPF', 70);
-  FEmail := AddField('E-mail', 110);
-  FCep := AddField('CEP (CE)', 150);
-  FBirthDate := AddField('Birth date', 190);
-
-  { Formatting runs while the user types; it never rejects. }
-  FCpf.OnChange := FormatCpf;
-
-  Submit := TButton.Create(Self);
-  Submit.Parent := Self;
-  Submit.SetBounds(140, 230, 120, 30);
-  Submit.Caption := 'Validate';
-  Submit.Default := True;
-  Submit.OnClick := SubmitClick;
-
-  FStatus := TLabel.Create(Self);
-  FStatus.Parent := Self;
-  FStatus.SetBounds(24, 270, 400, 17);
-  FStatus.Font.Style := [fsBold];
-
   { The whole configuration of the form, in one readable block.
 
-    How failures are shown, and what the rules are, are separate decisions —
-    which is the entire point of the rewrite. Swapping the balloon for an
-    inline label means changing one line here and nothing else. }
+    How failures are shown, and what is checked, are separate decisions — which
+    is the point of the rewrite. Swapping the balloon for an inline label means
+    changing one line here and nothing else. }
   FTreatment := TFormTreatment.Create;
   FTreatment.StopOnFirstFailure := False;
 
@@ -110,16 +82,16 @@ begin
     .Treat(TBalloonTipTreatment.Create('Check this field'))
     .Treat(TFocusTreatment.Create);
 
+  { Rules name the control they apply to. The 2017 version guessed from the
+    control's name, so renaming a field silently disabled its validation. }
   FTreatment
-    .Require(FName, 'Name')
-    .Require(FCpf, 'CPF')
-    .Rule(FCpf, TCpfValidator.Create, 'CPF')
-    .Require(FEmail, 'E-mail')
-    .Rule(FEmail, TEmailValidator.Create, 'E-mail')
-    .Rule(FCep, TCepValidator.Create('CE'), 'CEP')
-    .Rule(FBirthDate, TDateValidator.Create, 'Birth date');
-
-  FTreatment.ArrangeTabOrder(Self);
+    .Require(edName, 'Name')
+    .Require(edCpf, 'CPF')
+    .Rule(edCpf, TCpfValidator.Create, 'CPF')
+    .Require(edEmail, 'E-mail')
+    .Rule(edEmail, TEmailValidator.Create, 'E-mail')
+    .Rule(edCep, TCepValidator.Create('CE'), 'CEP')
+    .Rule(edBirthDate, TDateValidator.Create, 'Birth date');
 end;
 
 destructor TfrmDemo.Destroy;
@@ -128,38 +100,72 @@ begin
   inherited Destroy;
 end;
 
-procedure TfrmDemo.FormatCpf(Sender: TObject);
+procedure TfrmDemo.edCpfChange(Sender: TObject);
 var
-  F: IFormatter;
+  Formatter: IFormatter;
   Formatted: string;
 begin
-  F := TCpfCnpjFormatter.Create;
-  Formatted := F.Format(FCpf.Text);
-  if Formatted = FCpf.Text then
+  { Formatters never reject, so this is safe to run on every keystroke. The
+    handler is detached while rewriting Text to avoid re-entering itself. }
+  Formatter := TCpfCnpjFormatter.Create;
+  Formatted := Formatter.Format(edCpf.Text);
+  if Formatted = edCpf.Text then
     Exit;
-  FCpf.OnChange := nil;
+
+  edCpf.OnChange := nil;
   try
-    FCpf.Text := Formatted;
-    FCpf.SelStart := Length(Formatted);
+    edCpf.Text := Formatted;
+    edCpf.SelStart := Length(Formatted);
   finally
-    FCpf.OnChange := FormatCpf;
+    edCpf.OnChange := edCpfChange;
   end;
 end;
 
-procedure TfrmDemo.SubmitClick(Sender: TObject);
+procedure TfrmDemo.btnValidateClick(Sender: TObject);
 begin
   if FTreatment.Validate then
   begin
-    FStatus.Font.Color := clGreen;
-    FStatus.Caption := 'All fields valid.';
+    lblStatus.Font.Color := clGreen;
+    lblStatus.Caption := 'All fields valid.';
   end
   else
   begin
-    FStatus.Font.Color := clRed;
-    { Failures carries every failure of the pass, in field order, each with the
-      reason the validator gave. }
-    FStatus.Caption := Format('%d field(s) rejected. First: %s',
+    lblStatus.Font.Color := clRed;
+    { Failures holds every failure of the pass, in field order, each carrying
+      the reason its validator gave. }
+    lblStatus.Caption := Format('%d field(s) rejected. First: %s',
       [FTreatment.Failures.Count, FTreatment.Failures[0].Message]);
+  end;
+end;
+
+procedure TfrmDemo.btnFadeFormClick(Sender: TObject);
+var
+  Fade: TFadeForm;
+  Info: TLabel;
+begin
+  { TFadeForm has no .dfm of its own, so it is built with CreateNew — Create
+    would raise EResNotFound. Its defaults come from InitializeNewForm, which
+    both constructors call, so FadeEnabled and CloseOnEscape are already set
+    here. }
+  Fade := TFadeForm.CreateNew(Self);
+  try
+    Fade.Caption := 'TFadeForm';
+    Fade.Position := poMainFormCenter;
+    Fade.BorderStyle := bsDialog;
+    Fade.ClientWidth := 320;
+    Fade.ClientHeight := 120;
+    Fade.FadeDuration := 400;
+
+    Info := TLabel.Create(Fade);
+    Info.Parent := Fade;
+    Info.SetBounds(24, 40, 280, 40);
+    Info.WordWrap := True;
+    Info.Caption := 'This window faded in over 400 ms. Press Escape to close ' +
+      'it — the fade is on open only.';
+
+    Fade.ShowModal;
+  finally
+    Fade.Free;
   end;
 end;
 

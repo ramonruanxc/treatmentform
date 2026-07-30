@@ -19,6 +19,11 @@ lib/
 *.map
 *.tds
 
+# The project .res is deliberately NOT ignored. It carries the application
+# manifest (comctl32 v6 theming and the DPI-awareness declaration) that the
+# .dproj settings generate, and demo/TreatmentFormDemo.dpr requires it through
+# {$R *.res} — so a fresh clone has to have it in order to build.
+
 # Delphi project user files
 *.dproj.local
 *.groupproj.local
