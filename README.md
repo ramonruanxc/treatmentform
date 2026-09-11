@@ -12,6 +12,15 @@ failure is shown to the user.
 
 ---
 
+## Execution flow
+
+![Execution flow of treatmentform](docs/images/architecture-flow.png)
+
+The VCL adapter clears previous state and validates explicitly registered rules
+using the portable core. Invalid fields produce failures and configured UI
+treatments; a successful result lets the caller decide whether to save.
+Validation stops at the first failure by default.
+
 ## Install
 
 With [Boss](https://github.com/HashLoad/boss):
